@@ -1,0 +1,136 @@
+
+# ========================================================
+# CineWeb — Docker Compose Unificado
+# Orquestra todos os serviços do ecossistema em uma rede bridge.
+# ========================================================
+
+services:
+  # ─── PostgreSQL ───
+  db:
+    image: postgres:15
+    container_name: cineweb-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-60451}
+      POSTGRES_DB: ${POSTGRES_DB:-cineweb}
+    ports:
+      # Porta 5433 no PC para não conflitar com um PostgreSQL instalado no Windows.
+      # Dentro da rede Docker o backend continua usando cineweb-db:5432.
+      - '5433:5432'
+    networks:
+      - cineweb-network
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── Apache Kafka (Mensageria — modo KRaft, sem Zookeeper) ───
+  # Tópico "filmes.novos": o backend publica um evento quando um filme é
+  # cadastrado e o consumidor gera a notificação para Web/Mobile.
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: cineweb-kafka
+    ports:
+      - '9094:9094'   # acesso a partir da máquina host (localhost:9094)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 1
+    networks:
+      - cineweb-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  # ─── Backend (NestJS API) ───
+  backend:
+    build: ./sistema-cineWeb-backend
+    container_name: cineweb-backend
+    ports:
+      - '3000:3000'
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-60451}@cineweb-db:5432/${POSTGRES_DB:-cineweb}?schema=public
+      - JWT_SECRET=${JWT_SECRET:-cineweb-jwt-secret-dev-2026}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-cineweb-jwt-refresh-secret-dev-2026}
+      - PORT=3000
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-kafka:9092}
+    networks:
+      - cineweb-network
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./sistema-cineWeb-backend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  # ─── Frontend Web (Vite + React) ───
+  frontend:
+    build: ./sistema-cineWeb-frontend
+    container_name: cineweb-frontend
+    ports:
+      - '5173:5173'
+    environment:
+      # A lógica dinâmica no api.ts já define localhost:3000 como fallback local
+      # e resolve a URL do codespace automaticamente.
+      - NODE_ENV=development
+    networks:
+      - cineweb-network
+    depends_on:
+      - backend
+    volumes:
+      - ./sistema-cineWeb-frontend/src:/app/src
+    restart: unless-stopped
+
+  # ─── Mobile (Expo / React Native) ───
+  # NOTA: O mobile Expo funciona melhor fora do Docker.
+  # Este serviço é OPCIONAL — use apenas para desenvolvimento local
+  # quando quiser um ambiente isolado. Para Expo Go no celular físico,
+  # recomenda-se rodar `npx expo start` diretamente na máquina host.
+  mobile:
+    build: ./sistema-cineWeb-mobile
+    container_name: cineweb-mobile
+    ports:
+      - '8081:8081'
+    environment:
+      # Substitua pelo IP da sua máquina host na rede Wi-Fi local
+      # para que o Expo Go no celular físico consiga se conectar.
+      # Exemplo: 192.168.1.100
+      - REACT_NATIVE_PACKAGER_HOSTNAME=${HOST_IP:-0.0.0.0}
+    networks:
+      - cineweb-network
+    depends_on:
+      - backend
+    volumes:
+      - ./sistema-cineWeb-mobile:/app
+      - /app/node_modules
+    profiles:
+      - mobile  # Não sobe por padrão; use: docker compose --profile mobile up
+
+volumes:
+  pgdata:
+
+networks:
+  cineweb-network:
+    driver: bridge

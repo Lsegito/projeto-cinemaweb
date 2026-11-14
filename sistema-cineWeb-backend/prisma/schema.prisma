@@ -1,0 +1,136 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ========================
+// Enums
+// ========================
+
+enum Perfil {
+  ADMIN
+  CUSTOMER
+}
+
+// ========================
+// Autenticação
+// ========================
+
+model Usuario {
+  id               String   @id @default(uuid())
+  nome             String
+  email            String   @unique
+  senha            String   // Hash bcrypt
+  perfil           Perfil   @default(CUSTOMER)
+  refreshTokenHash String?  // Hash bcrypt do Refresh Token ativo (null = revogado)
+  createdAt        DateTime @default(now())
+  pedidos          Pedido[]
+}
+
+// ========================
+// Domínio Cinema
+// ========================
+
+model Genero {
+  id     String  @id @default(uuid())
+  nome   String  @unique
+  filmes Filme[]
+}
+
+model Filme {
+  id                  String   @id @default(uuid())
+  titulo              String
+  duracao             Int // em minutos
+  sinopse             String
+  elenco              String
+  generoId            String
+  classificacaoEtaria String
+  dataInicioExibicao  DateTime
+  dataFimExibicao     DateTime
+  status              String
+  genero              Genero   @relation(fields: [generoId], references: [id])
+  sessoes             Sessao[]
+}
+
+model Sala {
+  id         String   @id @default(uuid())
+  numero     Int      @unique
+  capacidade Int
+  sessoes    Sessao[]
+}
+
+model Sessao {
+  id            String     @id @default(uuid())
+  filmeId       String
+  salaId        String
+  data          DateTime
+  horario       String
+  valorIngresso Float
+  filme         Filme      @relation(fields: [filmeId], references: [id])
+  sala          Sala       @relation(fields: [salaId], references: [id])
+  ingressos     Ingresso[]
+}
+
+model LancheCombo {
+  id            String             @id @default(uuid())
+  nome          String
+  descricao     String
+  valorUnitario Float
+  estoque       Int
+  pedidos       ItemPedidoLanche[]
+}
+
+model Pedido {
+  id         String             @id @default(uuid())
+  usuarioId  String?
+  valorTotal Float
+  qtdInteira Int
+  qtdMeia    Int
+  dataHora   DateTime           @default(now())
+  usuario    Usuario?           @relation(fields: [usuarioId], references: [id])
+  ingressos  Ingresso[]
+  lanches    ItemPedidoLanche[]
+}
+
+model ItemPedidoLanche {
+  id            String      @id @default(uuid())
+  pedidoId      String
+  lancheComboId String
+  quantidade    Int
+  precoUnitario Float
+  pedido        Pedido      @relation(fields: [pedidoId], references: [id])
+  lancheCombo   LancheCombo @relation(fields: [lancheComboId], references: [id])
+}
+
+model Ingresso {
+  id        String @id @default(uuid())
+  pedidoId  String
+  sessaoId  String
+  poltrona  String
+  tipo      String
+  valorPago Float
+  pedido    Pedido @relation(fields: [pedidoId], references: [id])
+  sessao    Sessao @relation(fields: [sessaoId], references: [id])
+}
+
+// ========================
+// Mensageria (Kafka)
+// ========================
+
+// Notificação gerada pelo consumidor Kafka do tópico "filmes.novos"
+model Notificacao {
+  id       String   @id @default(uuid())
+  tipo     String   // ex.: FILME_NOVO
+  titulo   String
+  mensagem String
+  filmeId  String?
+  criadoEm DateTime @default(now())
+
+  @@index([criadoEm])
+}

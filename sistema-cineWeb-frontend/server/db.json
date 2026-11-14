@@ -1,0 +1,42 @@
+{
+  "filmes": [
+    {
+      "titulo": "batata",
+      "sinopse": "13213213123132",
+      "duracao": 93,
+      "classificacao": "16",
+      "genero": "Ação",
+      "elenco": "Rambo",
+      "dataInicioExibicao": "2025-12-19",
+      "dataFinalExibicao": "2025-12-25",
+      "id": 1
+    }
+  ],
+  "salas": [
+    {
+      "numero": 1,
+      "capacidade": 120,
+      "id": 1
+    }
+  ],
+  "sessoes": [
+    {
+      "filmeId": "1",
+      "salaId": "1",
+      "dataHora": "2025-12-19T09:35",
+      "id": 1
+    }
+  ],
+  "pedidos": [],
+  "lancheCombos": [
+    {
+      "nome": "gsdfgsdfg",
+      "descricao": "fgdfgdf",
+      "valorUnitario": 10,
+      "estoque": 100,
+      "quantidade": 0,
+      "subTotal": 0,
+      "id": 1
+    }
+  ]
+}

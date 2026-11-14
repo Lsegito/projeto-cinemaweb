@@ -1,0 +1,25 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (nunca subir; use os .env.example)
+.env
+.env.local
+.env.*.local
+
+# Builds
+dist/
+dist-ssr/
+build/
+
+# Expo
+.expo/
+web-build/
+
+# Logs e sistema
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Backups do banco
+*.dump
